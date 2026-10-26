@@ -3,4 +3,4 @@ name=HyperOS UI SOH 100 Lock
 version=1.0.0
 versionCode=100
 author=E3N
-description=Experimental independent Xiaomi UI SOH 100 lock; frame-verified sysfs write, OEM raw SOH and charging policy untouched.
+description=实验性模块：将支持的界面 SOH 数据固定为 100%，通过原厂帧校验控制写入；不改变真实电芯健康度、电池循环次数或充电参数。
