@@ -1,6 +1,6 @@
 id=hyperos_ui_soh_100_lock
-name=HyperOS UI SOH 100 Lock
-version=1.0.0
-versionCode=100
+name=HyperOS UI SOH 100 Lock + Cycle UI Compat
+version=1.1.0-alpha.1
+versionCode=1101
 author=E3N
-description=实验性模块：将支持的界面 SOH 数据固定为 100%，通过原厂帧校验控制写入；不改变真实电芯健康度、电池循环次数或充电参数。
+description=实验性模块：继续固定支持设备的UI SOH为100%，不修改真实循环次数/原始SOH/充电策略；新增可选LSPosed安全中心循环计数界面兼容补丁（需单独安装启用）。
