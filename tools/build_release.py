@@ -4,7 +4,7 @@ from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "v1.0.0"
+VERSION = "v" + next(line.split("=", 1)[1].strip() for line in (ROOT / "module.prop").read_text(encoding="utf-8").splitlines() if line.startswith("version="))
 NAMES = (
     "module.prop",
     "customize.sh",
