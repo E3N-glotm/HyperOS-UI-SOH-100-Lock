@@ -7,6 +7,22 @@ Author: E3N | Release v1.0.0 (experimental).
 
 This is an **independent Magisk module** targeting Xiaomi pudding BQ27Z561 driver's vendor UI SOH. It is not combined with the existing Battery Cycle + SOH Index Lock.
 
+## v1.1.0-alpha.1 (preview): Restore visible battery cycle count in protection settings
+
+[New preview release](https://github.com/E3N-glotm/HyperOS-UI-SOH-100-Lock/releases/tag/v1.1.0-alpha.1).
+
+On Nov 9, Xiaomi pudding / Android 17 reported an actual cycle count of **128** in both Android and OEM sysfs, the second field of the eleven-value UI SOH frame, and Security Center 13.6.6 logs (`BatteryHealthUtils.getBatteryCycleCount: 128`). This confirms the underlying counter is intact; the missing item is a presentation problem, not lost battery telemetry.
+
+Two separate artifacts:
+
+- **Magisk ZIP**: `HyperOS-UI-SOH-100-Lock-v1.1.0-alpha.1.zip`. Existing UI SOH core, 90-second service, install-time validation and hardware behavior are unchanged; Magisk Action now includes read-only live cycle diagnostics.
+- **Optional LSPosed companion APK**: `HyperOS-Battery-Cycle-UI-Compat-v1.1.0-alpha.1.apk`. Injects a read-only `Battery cycle count` preference into Xiaomi Security Center's `ChargeFeatureFragment.onCreatePreferences(Bundle, String)` using OEM `IMiCharge.getBatteryCycleCount()` or strict read-only hardware fallback, and avoids duplicating a visible native cycle entry.
+
+To enable the companion: install APK, open LSPosed Manager, activate **E3N Battery Cycle Display Compat** and scope it **only** to `com.miui.securitycenter`, then restart Security Center or reboot and check Battery protection. The companion does not run without LSPosed and scope activation. It does not alter any charging policy, SOH inputs, firmware, or underlying battery counter.
+
+The separate Battery Cycle & SOH Index Lock module currently fails closed because its OEM encrypted configuration fingerprint changed; this release intentionally does not re-enable its battery aging charging policy. **CI validated APK compilation and integrity, and on-device reads confirm 128 actual cycles, but the protected lock screen prevented visual UI verification after installation.** Thus this remains a preview and should not be presented as an end-to-end verified display fix. The APK uses a temporary preview signature and may require uninstalling the previous preview companion before future upgrades.
+
+
 ## How it works
 
 - After startup, inspects /sys/class/xm_power/fg_master/ui_soh once every 90 seconds.
