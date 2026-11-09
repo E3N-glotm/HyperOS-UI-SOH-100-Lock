@@ -1,0 +1,154 @@
+name: Build & publish UI SOH v1.1 alpha with optional Battery Cycle UI patch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/release-v1.1-alpha.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install SDK build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" version
+          "$ANDROID_HOME/build-tools/35.0.0/d8" --version || true
+
+      - name: Static and shell safety checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/test_battery_cycle_display_v110.py
+          python3 -m py_compile tools/build_release.py
+          for script in customize.sh ui_soh_core.sh service.sh action.sh; do bash -n "$script"; done
+          test "$(grep -c '^version=1.1.0-alpha.1$' module.prop)" -eq 1
+          ! grep -q 'BAA_config' companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java
+          test "$(cat companion/assets/xposed_scope)" = 'com.miui.securitycenter'
+
+      - name: Compile optional read-only LSPosed companion
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          SDK="$ANDROID_HOME/platforms/android-35/android.jar"
+          mkdir -p build/stubclasses build/moduleclasses build/dex dist
+          find companion/stubs -name '*.java' | sort > build/stub_sources.list
+          javac --release 8 -d build/stubclasses @build/stub_sources.list
+          (cd build/stubclasses && jar cf ../xposed-stubs.jar .)
+          javac --release 8 -cp "$SDK:build/xposed-stubs.jar" \
+            -d build/moduleclasses \
+            companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java
+          jar cf build/cycle-ui-only.jar -C build/moduleclasses .
+          test "$(jar tf build/cycle-ui-only.jar | grep -c '^io/github/e3n/batterycycle/BatteryCycleDisplayHook')" -gt 0
+          if jar tf build/cycle-ui-only.jar | grep -q '^de/robv/android/xposed/'; then
+            echo 'Refusing to package compile-only Xposed API stubs'
+            exit 1
+          fi
+
+          "$BT/d8" --min-api 28 --lib "$SDK" --output build/dex build/cycle-ui-only.jar
+          test -s build/dex/classes.dex
+          "$BT/aapt2" link -o build/unsigned.apk \
+            --manifest companion/AndroidManifest.xml \
+            --min-sdk-version 28 --target-sdk-version 35 -I "$SDK"
+          (cd build/dex && zip -q ../unsigned.apk classes.dex)
+          (cd companion && zip -q ../build/unsigned.apk assets/xposed_init assets/xposed_scope)
+          "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
+
+          # A temporary preview signing certificate; future preview APKs may
+          # need a clean reinstall. No private production signing key is used.
+          keytool -genkeypair -noprompt \
+            -keystore build/preview.keystore -storepass preview-pass-1101 \
+            -alias e3n-preview -keypass preview-pass-1101 \
+            -dname "CN=E3N Preview Battery UI, OU=Lab, O=E3N" \
+            -keyalg RSA -keysize 2048 -validity 3650
+          "$BT/apksigner" sign \
+            --ks build/preview.keystore --ks-pass pass:preview-pass-1101 \
+            --key-pass pass:preview-pass-1101 --ks-key-alias e3n-preview \
+            --out dist/HyperOS-Battery-Cycle-UI-Compat-v1.1.0-alpha.1.apk \
+            build/aligned.apk
+          "$BT/apksigner" verify --verbose \
+            dist/HyperOS-Battery-Cycle-UI-Compat-v1.1.0-alpha.1.apk
+          unzip -t dist/HyperOS-Battery-Cycle-UI-Compat-v1.1.0-alpha.1.apk
+          unzip -p dist/HyperOS-Battery-Cycle-UI-Compat-v1.1.0-alpha.1.apk \
+            assets/xposed_scope | grep -qx 'com.miui.securitycenter'
+          "$BT/aapt2" dump badging \
+            dist/HyperOS-Battery-Cycle-UI-Compat-v1.1.0-alpha.1.apk | head -12
+
+      - name: Build unchanged-core Magisk upgrade ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/build_release.py
+          unzip -t dist/HyperOS-UI-SOH-100-Lock-v1.1.0-alpha.1.zip
+          unzip -p dist/HyperOS-UI-SOH-100-Lock-v1.1.0-alpha.1.zip \
+            module.prop | grep -qx 'version=1.1.0-alpha.1'
+          # The original SOH core and its service are NOT changed by the UI patch.
+          diff -q <(unzip -p dist/HyperOS-UI-SOH-100-Lock-v1.1.0-alpha.1.zip ui_soh_core.sh) ui_soh_core.sh
+          diff -q <(unzip -p dist/HyperOS-UI-SOH-100-Lock-v1.1.0-alpha.1.zip service.sh) service.sh
+          sha256sum dist/*.apk dist/*.zip | tee dist/SHA256SUMS.txt
+
+      - name: Upload verified artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: battery-ui-cycle-alpha
+          path: |
+            dist/*.zip
+            dist/*.apk
+            dist/SHA256SUMS.txt
+
+      - name: Publish new preview version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v1.1.0-alpha.1
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already published; immutable preview not overwritten." >&2
+            exit 1
+          fi
+          {
+            echo "## UI SOH 100 Lock + Battery Cycle UI Compat $TAG"
+            echo
+            echo "**两份独立资产，作用不同：**"
+            echo
+            echo "- Magisk ZIP：升级现有 UI SOH 固定模块，保持 SOH 核心及后台服务行为不变，操作页新增真实循环次数只读诊断。"
+            echo "- LSPosed APK（可选）：仅针对 com.miui.securitycenter 的 ChargeFeatureFragment，在电池保护偏好界面追加真实循环次数；须自行在 LSPosed 中启用并勾选安全中心作用域。"
+            echo
+            echo "手机实测底层计数128、IMiCharge返回128。当前测试版已经完成源码与APK静态验证，**尚未验证手机锁屏状态下页面是否成功显示**。保留预览版，不宣称彻底修复。"
+            echo "不修改真实循环次数、原始SOH、充电电压/电流、老化充电策略、系统DNS或其他系统分区；不回退安全中心。"
+            echo "伴随APK采用一次性测试签名，后续版本可能需要先卸载旧伴随APK再安装，不建议用于不受信任的设备。"
+            echo
+            echo "### SHA-256"
+            echo
+            echo '~~~'
+            cat dist/SHA256SUMS.txt
+            echo '~~~'
+          } > release-notes.md
+          gh release create "$TAG" \
+            dist/HyperOS-UI-SOH-100-Lock-v1.1.0-alpha.1.zip \
+            dist/HyperOS-Battery-Cycle-UI-Compat-v1.1.0-alpha.1.apk \
+            dist/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title "HyperOS UI SOH 100 Lock + Battery Cycle UI Compat $TAG" \
+            --notes-file release-notes.md --prerelease
