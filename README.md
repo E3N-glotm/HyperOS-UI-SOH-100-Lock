@@ -9,6 +9,14 @@
 > [!WARNING]
 > **UI SOH 100 不表示电芯恢复到新电池容量。** 修改显示或厂商估算值可能影响部分容量补偿与策略判断；它不是电芯校准，也没有改变真实 SOH、循环次数、Qmax、电池温度或实际充电参数。
 
+## 2026-11-10 重要纠正：旧版界面伴随 APK 已停用
+
+**不要继续安装 v1.1.0-alpha.1 的独立 LSPosed APK。** 已在真实 `OS4.0.5.0.XPCCNXM` / 安全中心 `13.6.6-261028.0.1` 核查，用户查看的电池保护界面实际是 `com.miui.powercenter.nightcharge.ChargerProtectActivity` 内的 `ChargeProtectFragment.onCreatePreferences`，而旧 APK Hook 的是**另一个页面** `com.miui.powercenter.charge.ChargeFeatureFragment`，未解决用户报告的循环次数不显示问题。手机已移除旧伴随 APK。
+
+从原厂 DEX 确认真实原因：`ChargeProtectFragment` 虽然创建 `reference_cycle_count`，但通过 `oh.g.N()` 机型/地区能力判断将该条目从 `preference_key_category_battery_info` 移除；该判断在中国区固件中返回 false。原始循环次数仍可从 `/sys/class/xm_power/fg_master/cyclecount` 读取，本机为 **129**。**不应改变 ROM 地区/全局 Build 标志**，因为会影响同一页面其它条目与更多系统功能。
+
+按照用户要求，后续只接受**一个 Magisk ZIP、没有独立 APK**的解决方案。须使用仅针对安全中心进程的系统无感、可卸载运行时补丁，恢复原生循环次数偏好且保持真实健康/充电数据不变。**该原生界面补丁尚未完成构建及手机可视验收，不要把现有 Magisk ZIP 误称为已修复原生页面。** 现有 Magisk ZIP 的「操作」页可以只读显示真实循环计数，UI SOH 覆盖功能仍按原逻辑运行。
+
 ## v1.1.0-alpha.1：电池保护循环次数显示兼容（预览版）
 
 **[查看新版本 Release](https://github.com/E3N-glotm/HyperOS-UI-SOH-100-Lock/releases/tag/v1.1.0-alpha.1)**。
