@@ -7,6 +7,14 @@ Author: E3N | Release v1.0.0 (experimental).
 
 This is an **independent Magisk module** targeting Xiaomi pudding BQ27Z561 driver's vendor UI SOH. It is not combined with the existing Battery Cycle + SOH Index Lock.
 
+## Nov 10, 2026 correction: prior companion APK is deprecated
+
+**Do not install the v1.1.0-alpha.1 standalone LSPosed companion APK.** On the tested HyperOS OS4.0.5.0 / Security Center 13.6.6, the actual Battery Protection page is `com.miui.powercenter.nightcharge.ChargeProtectFragment.onCreatePreferences`, not the `com.miui.powercenter.charge.ChargeFeatureFragment` incorrectly targeted by the companion APK. It was not a verified UI fix and has been uninstalled from the tested phone.
+
+OEM DEX analysis confirms the UI creates `reference_cycle_count` but removes the native preference under `oh.g.N()` model/region feature gating. The true cycle count is still available in `/sys/class/xm_power/fg_master/cyclecount` (**129 cycles** at inspection). Global international-build spoofing is not an acceptable fix because it changes other feature paths.
+
+Future display repair must be delivered as a **Magisk-only ZIP with no standalone APK and no LSPosed scope configuration**, strictly limited to the Security Center UI and leaving BMS/charging policies intact. **No such native in-process display patch has yet passed build and visual on-device validation.** The existing Magisk Action can already read true cycles; do not interpret it as a confirmed repair of Xiaomi's native Battery Protection page.
+
 ## v1.1.0-alpha.1 (preview): Restore visible battery cycle count in protection settings
 
 [New preview release](https://github.com/E3N-glotm/HyperOS-UI-SOH-100-Lock/releases/tag/v1.1.0-alpha.1).
