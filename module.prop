@@ -1,6 +1,6 @@
 id=hyperos_ui_soh_100_lock
-name=HyperOS UI SOH 100 Lock + Cycle UI Compat
-version=1.1.0-alpha.1
-versionCode=1101
+name=HyperOS UI SOH 100 Lock
+version=1.1.0-alpha.2
+versionCode=1102
 author=E3N
-description=实验性模块：继续固定支持设备的UI SOH为100%，不修改真实循环次数/原始SOH/充电策略；新增可选LSPosed安全中心循环计数界面兼容补丁（需单独安装启用）。
+description=实验性模块：继续固定支持设备的UI SOH为100%（仅改UI SOH字段与校验字节，会随厂商估算影响charge_full）；不修改真实循环次数/原始SOH/充电策略；「操作」页只读并列显示燃料计UI SOH、安全中心Provider值、原始SOH、真实循环次数与charge_full（含来源与单位）。安全中心原生电池保护页的循环次数条目尚未修复，本版本不再附带独立APK。

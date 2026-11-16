@@ -4,7 +4,7 @@
 
 独立的 Magisk 实验模块，用于在已验证的 Xiaomi `pudding` 电池驱动上将**界面层 SOH** 固定为 100。与“电池循环档位与老化策略模块”分别发布，两者作用不同。
 
-**当前版本：v1.1.0-alpha.1（预览版）** · [下载 Release](https://github.com/E3N-glotm/HyperOS-UI-SOH-100-Lock/releases)
+**当前版本：v1.1.0-alpha.2（预览版，不标记 Latest）** · [下载 Release](https://github.com/E3N-glotm/HyperOS-UI-SOH-100-Lock/releases)
 
 > [!WARNING]
 > **UI SOH 100 不表示电芯恢复到新电池容量。** 修改显示或厂商估算值可能影响部分容量补偿与策略判断；它不是电芯校准，也没有改变真实 SOH、循环次数、Qmax、电池温度或实际充电参数。
@@ -16,6 +16,20 @@
 从原厂 DEX 确认真实原因：`ChargeProtectFragment` 虽然创建 `reference_cycle_count`，但通过 `oh.g.N()` 机型/地区能力判断将该条目从 `preference_key_category_battery_info` 移除；该判断在中国区固件中返回 false。原始循环次数仍可从 `/sys/class/xm_power/fg_master/cyclecount` 读取，本机为 **129**。**不应改变 ROM 地区/全局 Build 标志**，因为会影响同一页面其它条目与更多系统功能。
 
 按照用户要求，后续只接受**一个 Magisk ZIP、没有独立 APK**的解决方案。须使用仅针对安全中心进程的系统无感、可卸载运行时补丁，恢复原生循环次数偏好且保持真实健康/充电数据不变。**该原生界面补丁尚未完成构建及手机可视验收，不要把现有 Magisk ZIP 误称为已修复原生页面。** 现有 Magisk ZIP 的「操作」页可以只读显示真实循环计数，UI SOH 覆盖功能仍按原逻辑运行。
+
+## v1.1.0-alpha.2：取消独立 APK，补齐只读分层显示诊断
+
+**[Release](https://github.com/E3N-glotm/HyperOS-UI-SOH-100-Lock/releases/tag/v1.1.0-alpha.2)**（预览版，不标记 Latest）。
+
+按交接要求先完成“可独立验证的兼容性与诊断修复”。UI SOH 核心与后台服务**逐字节不变**（CI 与 v1.1.0-alpha.1 的 `ui_soh_core.sh`、`service.sh` 比对），本版只增加可观测性并停止发布独立 APK：
+
+- 模块 ID 仍为 `hyperos_ui_soh_100_lock`，版本升至 `1.1.0-alpha.2` / `versionCode=1102`；**本版只发布 Magisk ZIP，不再发布独立 LSPosed 伴随 APK**。旧 APK 钩的是 `ChargeFeatureFragment`（另一个页面），真机核查无效并已移除；源码保留为冻结记录，并在文件头写明下一版原生补丁必须绑定的真实目标（`ChargeProtectFragment`、偏好键 `reference_cycle_count`、原厂 `oh.g.N()` 移除逻辑），避免再次钩错页面。
+- 「操作」页改为分层只读报告（新增 `ui_soh_display_layers.sh`）：分别列出**燃料计 UI SOH sysfs 输入**、**安全中心持久化值 + PowerCenterProvider 返回值**、**原始 SOH 与真实循环次数**，并标注来源路径与单位（cycles / percent / µAh / mAh）。读不到就显示 `unreadable`，不会用 0 或设备常量顶替。
+- 口径明确：写燃料计 UI 输入**不等于**改写安全中心持久化记录或 Provider 返回值；Provider 值是安全中心的健康度口径，不是电芯原始健康度；`charge_full` 是电量计估算值，会随 UI SOH 估算变化，不能当成真实容量恢复。
+- 探针全程只读：不写 sysfs、不写 settings、不写 content、不改属性、不 chmod/chcon、不 mount，也绝不以写入模式调用 `ui_soh_core.sh`。
+- 诚实标注：安全中心原生电池保护页的 `reference_cycle_count` 条目仍由原厂能力判定移除，**本版未修复该页面**，Magisk「操作」页不能替代原生页面验收。
+
+**下一版（原生页面补丁）验收门槛**：只在已验证的 `ChargeProtectFragment` 生命周期内操作；以 `reference_cycle_count` 为键恢复原厂条目而不是新增重复条目；数值仅取 `miui.util.IMiCharge.getBatteryCycleCount()`（失败时只读 sysfs 回退）；取不到就不注入；未知安全中心版本不注入；不得改写 Provider 返回值、安全中心持久化健康度、原始 SOH、循环计数或任何充电策略；仍以单个 Magisk ZIP 交付，不引入独立 APK。
 
 ## v1.1.0-alpha.1：电池保护循环次数显示兼容（预览版）
 

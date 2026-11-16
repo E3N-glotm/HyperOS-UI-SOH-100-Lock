@@ -4,18 +4,18 @@ from pathlib import Path
 import re
 
 root = Path(__file__).resolve().parents[1]
-src = (root / "companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java").read_text()
-manifest = (root / "companion/AndroidManifest.xml").read_text()
-module = (root / "module.prop").read_text()
-core = (root / "ui_soh_core.sh").read_text()
-service = (root / "service.sh").read_text()
-action = (root / "action.sh").read_text()
-boot = (root / "customize.sh").read_text()
+src = (root / "companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java").read_text(encoding="utf-8")
+manifest = (root / "companion/AndroidManifest.xml").read_text(encoding="utf-8")
+module = (root / "module.prop").read_text(encoding="utf-8")
+core = (root / "ui_soh_core.sh").read_text(encoding="utf-8")
+service = (root / "service.sh").read_text(encoding="utf-8")
+action = (root / "action.sh").read_text(encoding="utf-8")
+boot = (root / "customize.sh").read_text(encoding="utf-8")
 checks = {
     "target only Xiaomi Security Center package":
         'PKG = "com.miui.securitycenter"' in src,
     "scope only Security Center":
-        (root/"companion/assets/xposed_scope").read_text().strip() == "com.miui.securitycenter",
+        (root/"companion/assets/xposed_scope").read_text(encoding="utf-8").strip() == "com.miui.securitycenter",
     "non-exported, permission-free, non-autostart companion":
         "<uses-permission" not in manifest and "<activity" not in manifest
         and "<service" not in manifest and "<receiver" not in manifest,
@@ -47,8 +47,11 @@ checks = {
         "cyclecount" not in service and
         'cyclecount' not in boot,
     "full version and unique id retained":
-        "version=1.1.0-alpha.1" in module
-        and "versionCode=1101" in module
+        # The companion stays frozen from the alpha.1 build, but the Magisk
+        # module id is immutable and its version advanced to alpha.2, which no
+        # longer ships this APK. See tests/test_native_page_hook_contract_v1102.py.
+        "version=1.1.0-alpha.2" in module
+        and "versionCode=1102" in module
         and "id=hyperos_ui_soh_100_lock" in module,
     "Magisk action shows actual independent count":
         '/sys/class/xm_power/fg_master/cyclecount' in action,

@@ -3,7 +3,15 @@
 **Language: [简体中文](README.md) | English (current)**
 
 
-Author: E3N | Release v1.0.0 (experimental).
+Author: E3N | Current release: v1.1.0-alpha.2 (preview, not marked Latest) — Magisk ZIP only, no standalone companion APK.
+
+## v1.1.0-alpha.2: no standalone APK, layered read-only display diagnostics
+
+[Release](https://github.com/E3N-glotm/HyperOS-UI-SOH-100-Lock/releases/tag/v1.1.0-alpha.2). The UI SOH core and its service are **byte-identical** to v1.1.0-alpha.1 (CI diffs them against the frozen tag); only observability changed and the standalone companion APK is no longer published. The module id stays `hyperos_ui_soh_100_lock` and the version advances to `1.1.0-alpha.2` / `versionCode=1102`.
+
+The Magisk Action page now reports three distinct layers through a read-only probe (`ui_soh_display_layers.sh`): the fuel-gauge UI SOH sysfs input this module pins, the Security Center persisted value plus the PowerCenterProvider return value, and the raw SOH with the real cycle counters — each labelled with its source path and unit (cycles / percent / µAh / mAh). An unreadable layer prints `unreadable` instead of a substitute value. Writing the fuel-gauge UI input does not rewrite the Security Center record or the Provider return value, the Provider value is not raw cell health, and `charge_full` is a fuel-gauge estimate that moves with the UI SOH estimate rather than a measured capacity restoration.
+
+The frozen companion source records the real target for the next Magisk-only native patch: bind to `com.miui.powercenter.nightcharge.ChargeProtectFragment.onCreatePreferences`, key on the OEM preference `reference_cycle_count` so the native row is restored rather than duplicated, read only `miui.util.IMiCharge.getBatteryCycleCount()` with read-only sysfs fallbacks, inject nothing when the value is unavailable, never inject into an unverified Security Center build, and never touch the Provider return value, the persisted health record, raw SOH, the counters or any charge policy. Until that patch is built and visually accepted on the native page, this module does not claim the native page is fixed.
 
 This is an **independent Magisk module** targeting Xiaomi pudding BQ27Z561 driver's vendor UI SOH. It is not combined with the existing Battery Cycle + SOH Index Lock.
 

@@ -9,6 +9,7 @@ NAMES = (
     "module.prop",
     "customize.sh",
     "ui_soh_core.sh",
+    "ui_soh_display_layers.sh",
     "service.sh",
     "action.sh",
 )

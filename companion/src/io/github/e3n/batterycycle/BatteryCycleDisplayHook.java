@@ -14,18 +14,43 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
- * Optional LSPosed companion for Xiaomi Security Center's battery protection
- * preference page. No background process, no charge control modification.
+ * DEPRECATED / Not shipped since v1.1.0-alpha.2 — FROZEN v1.1.0-alpha.1 artifact.
  *
- * Target verified from on-device Android 17 Security Center 13.6.6 dex:
- * com.miui.powercenter.charge.ChargeFeatureFragment
- * .onCreatePreferences(Bundle, String)
+ * This companion hooked the WRONG page. Verified against the on-device
+ * Android 17 Security Center 13.6.6-261028.0.1 disassembly, the battery
+ * protection screen the user actually opens is
  *
- * The OEM IMiCharge.getBatteryCycleCount() remains the first source.
+ *   com.miui.powercenter.nightcharge.ChargerProtectActivity
+ *   com.miui.powercenter.nightcharge.ChargeProtectFragment.onCreatePreferences(Bundle, String)
+ *   superclass com.miui.common.base.ui.OS4PreferenceFragment
+ *
+ * and its cycle row is the OEM preference whose key is the literal string
+ * "reference_cycle_count", located with findPreference and held in the
+ * fragment field Lcom/miui/powercenter/nightcharge/ChargeProtectFragment;.g
+ * (a miuix.preference.TextPreference). ChargeProtectFragment then calls the
+ * OEM capability gate oh.g.N()Z inside onCreatePreferences and, when that
+ * gate returns false as it does on this CN firmware, it removes the row with
+ * PreferenceGroup.removePreference from the category field .c together with
+ * the production-date and first-use-date rows. Hooking
+ * com.miui.powercenter.charge.ChargeFeatureFragment therefore never repaired
+ * the screen the user reported, and the installed companion APK was removed
+ * from the phone.
+ *
+ * Kept here unchanged as the frozen alpha.1 build source plus the recorded
+ * target contract for the next Magisk-only patch. The next patch must bind to
+ * the verified ChargeProtectFragment page, must key on "reference_cycle_count"
+ * so the OEM row is restored rather than duplicated, must read only
+ * miui.util.IMiCharge.getBatteryCycleCount() with read-only sysfs fallbacks,
+ * must inject nothing when the real value is unavailable, and must not touch
+ * the PowerCenterProvider return value, the persisted Security Center health
+ * record, the raw SOH, the cycle counters or any charge policy.
+ *
+ * No standalone companion APK is published from v1.1.0-alpha.2 onward.
  */
 public final class BatteryCycleDisplayHook implements IXposedHookLoadPackage {
     private static final String TAG = "E3N-BatteryCycleDisplay";
     private static final String PKG = "com.miui.securitycenter";
+    /* Retired target: a different page than the one the user opens. */
     private static final String FRAGMENT =
             "com.miui.powercenter.charge.ChargeFeatureFragment";
     private static final String PREF_KEY = "e3n_actual_battery_cycle_count";

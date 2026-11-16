@@ -1,0 +1,155 @@
+name: Release Magisk-only v1.1.0-alpha.2
+# The v1.1.0-alpha.1 release and its companion APK stay published and immutable.
+# This release ships ONLY the Magisk ZIP: no companion APK is built or published,
+# because that APK targeted the wrong Security Center page.
+on:
+  push:
+    tags:
+      - v1.1.0-alpha.2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  TAG: v1.1.0-alpha.2
+  ZIP_NAME: HyperOS-UI-SOH-100-Lock-v1.1.0-alpha.2.zip
+
+jobs:
+  verify-and-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Freeze the UI SOH core and its service against the published tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse v1.1.0-alpha.1
+          # The SOH write path and the background service must not change in an
+          # observability release. Compare after CR normalisation because the
+          # released blobs stored CRLF and the tree now normalises to LF.
+          for f in ui_soh_core.sh service.sh; do
+            if ! diff -q <(git show "v1.1.0-alpha.1:$f" | tr -d '\r') \
+                         <(tr -d '\r' < "$f") > /dev/null; then
+              echo "UI SOH core/service changed: $f" >&2
+              diff <(git show "v1.1.0-alpha.1:$f" | tr -d '\r') <(tr -d '\r' < "$f") || true
+              exit 1
+            fi
+          done
+          # The frozen companion must keep pointing at the retired page and be
+          # labelled deprecated, so it can never be mistaken for the fix again.
+          grep -Fq 'com.miui.powercenter.charge.ChargeFeatureFragment' \
+            companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java
+          grep -Fq 'DEPRECATED' \
+            companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java
+          grep -Fq 'com.miui.powercenter.nightcharge.ChargeProtectFragment' \
+            companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java
+          grep -Fq 'reference_cycle_count' \
+            companion/src/io/github/e3n/batterycycle/BatteryCycleDisplayHook.java
+          # Immutable module identity, advanced version.
+          grep -Fqx 'id=hyperos_ui_soh_100_lock' module.prop
+          grep -Fqx 'version=1.1.0-alpha.2' module.prop
+          grep -Fqx 'versionCode=1102' module.prop
+          # No ROM build-number or SDK-number decision gate anywhere.
+          ! grep -nE '\[\s*[!"$]*"?\$\(getprop ro\.build\.version\.(incremental|sdk)' \
+            customize.sh service.sh action.sh ui_soh_core.sh ui_soh_display_layers.sh
+          ! grep -E 'ro\.build\.version\.(incremental|sdk)' customize.sh ui_soh_core.sh
+
+      - name: Read-only, APK-free and safety contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/test_battery_cycle_display_v110.py
+          python3 tests/test_display_layers_v1102.py
+          python3 tests/test_native_page_hook_contract_v1102.py
+          python3 -m py_compile tools/build_release.py
+          for f in customize.sh ui_soh_core.sh service.sh action.sh \
+                   ui_soh_display_layers.sh; do
+            bash -n "$f"
+          done
+          # The reporter must not contain a single write primitive.
+          ! grep -nE '(settings|content) (put|insert|update|delete)|setprop|resetprop|chmod|chcon|umount|mount -o' \
+            <(grep -v '^[[:space:]]*#' ui_soh_display_layers.sh)
+          # Action may only invoke the core in check mode.
+          ! grep -nE 'ui_soh_core\.sh" once' action.sh
+          grep -n 'ui_soh_core.sh" check' action.sh
+
+      - name: Build the Magisk-only ZIP deterministically
+        shell: bash
+        run: |
+          set -euo pipefail
+          # tools/build_release.py writes dist/<ZIP_NAME> with LF-only payloads.
+          python3 tools/build_release.py
+          ZIP="dist/$ZIP_NAME"
+          test -s "$ZIP"
+          unzip -t "$ZIP" >/dev/null
+          unzip -Z1 "$ZIP" | sort > /tmp/zip-list.txt
+          printf '%s\n' action.sh customize.sh module.prop service.sh \
+            ui_soh_core.sh ui_soh_display_layers.sh | sort > /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/zip-list.txt
+          unzip -p "$ZIP" module.prop | grep -Fqx 'version=1.1.0-alpha.2'
+          unzip -p "$ZIP" module.prop | grep -Fqx 'id=hyperos_ui_soh_100_lock'
+          unzip -p "$ZIP" ui_soh_display_layers.sh | grep -Fq 'probe_write_policy=none'
+          unzip -p "$ZIP" action.sh | grep -Fq 'ui_soh_display_layers.sh'
+          # No APK and no proprietary/analysis material inside the module.
+          if unzip -Z1 "$ZIP" | grep -Ei '\.apk$|classes.*dex|\.log$|private/'; then
+            echo "Unexpected payload in the Magisk ZIP" >&2
+            exit 1
+          fi
+          # Core and service inside the shipped ZIP must equal the published tag.
+          for f in ui_soh_core.sh service.sh; do
+            diff -q <(git show "v1.1.0-alpha.1:$f" | tr -d '\r') \
+                     <(unzip -p "$ZIP" "$f") > /dev/null
+          done
+          sha256sum "dist/$ZIP_NAME" | tee "dist/$ZIP_NAME.sha256"
+
+      - name: Upload verified artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-soh-alpha2-magisk-only
+          path: |
+            dist/${{ env.ZIP_NAME }}
+            dist/${{ env.ZIP_NAME }}.sha256
+
+      - name: Publish the prerelease (Magisk ZIP only)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ZIP="dist/$ZIP_NAME"
+          test -s "$ZIP"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Already published: never overwrite a published release" >&2
+            exit 1
+          fi
+          {
+            echo "## v1.1.0-alpha.2 — 只发布 Magisk ZIP（不再附带独立 APK）"
+            echo
+            echo "本版本遵循交接要求：先交付可独立验证的诊断修复，不声称原生页面已修复。"
+            echo
+            echo "- **逐字节冻结**：\`ui_soh_core.sh\` 与 \`service.sh\` 与 v1.1.0-alpha.1 完全一致（CI 对比冻结 tag，ZIP 内再次校验）。UI SOH 写入逻辑、90 秒轮询、每小时最多 3 次写入、未知帧即停机等行为不变。"
+            echo "- **不再发布独立 LSPosed APK**：旧 APK 钩的是 \`ChargeFeatureFragment\`（另一个页面），真机核查对用户所见的电池保护页无效，已从手机移除。本版只有一个 Magisk ZIP，符合“单个 Magisk ZIP、无独立 APK”的要求。"
+            echo "- **新增分层只读诊断**：「操作」页分别显示 ① 燃料计 UI SOH sysfs 输入（本模块固定为 100 的字段）② 安全中心持久化值 + \`PowerCenterProvider.getBatteryHealthValue\` ③ 原始 SOH 与真实循环次数；每项标注来源路径与单位（cycles / percent / µAh / mAh）。读不到显示 \`unreadable\`，不用 0 或常量顶替。"
+            echo "- **口径澄清**：写燃料计 UI 输入 ≠ 改写安全中心持久化记录或 Provider 返回值；Provider 值是安全中心健康度口径而非电芯原始健康度；\`charge_full\` 是电量计估算值，会随 UI SOH 估算变化，不是真实容量恢复。"
+            echo "- **探针全程只读**：不写 sysfs/settings/content，不改属性，不 chmod/chcon，不 mount，绝不以写入模式调用 \`ui_soh_core.sh\`；\`action.sh\` 只以 check 模式调用核心。"
+            echo "- **未修复项如实声明**：安全中心原生电池保护页 \`reference_cycle_count\` 条目仍由原厂 \`oh.g.N()\` 能力判定移除，本版未修复；Magisk「操作」页不能替代原生页面验收。冻结的 companion 源码头部已写明下一版原生补丁必须绑定的真实目标与禁止项。"
+            echo
+            echo "已知实机读数（2026-11-16，pudding / OS4.0.6.0.XPCCNXM / 安全中心 13.6.6-261028.0.1）：燃料计 UI SOH 100，安全中心持久化与 Provider 返回 99，原始 SOH 94，真实循环 134 次，charge_full 6940000 µAh（6940.0 mAh），设计容量 7000000 µAh（7000.0 mAh）。这些是不同层，不能相互等同。"
+            echo
+            echo "安装：Magisk 刷入 ZIP 并重启；停用/卸载并重启即恢复，不遗留任何分区写入或残留 APK。仍在 alpha 阶段：原生页面显示验收未完成，因此不标记 Latest。"
+            echo
+            echo "### SHA-256"
+            echo
+            echo '```'
+            cat "dist/$ZIP_NAME.sha256"
+            echo '```'
+          } > release-notes.md
+          gh release create "$TAG" "$ZIP" "$ZIP.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "HyperOS UI SOH 100 Lock $TAG (Magisk-only, read-only layered diagnostics)" \
+            --notes-file release-notes.md --prerelease --latest=false
